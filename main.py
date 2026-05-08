@@ -2,7 +2,7 @@ import logging
 from fastapi import FastAPI
 import inngest
 import inngest.fast_api
-from inngest.experimental import ai
+
 from dotenv import load_dotenv
 import uuid
 import os
@@ -10,8 +10,16 @@ import datetime
 from data_loader import load_and_chunk_pdf, embed_texts
 from vector_db import QdrantStorage
 from custom_types import RAQQueryResult, RAGSearchResult, RAGUpsertResult, RAGChunkAndSrc
+from groq import Groq
+import os
 
 load_dotenv()
+
+
+
+groq_client = Groq(
+    api_key=os.getenv("GROQ_API_KEY")
+)
 
 inngest_client = inngest.Inngest(
     app_id="rag_app",
@@ -77,25 +85,22 @@ async def rag_query_pdf_ai(ctx: inngest.Context):
         "Answer concisely using the context above."
     )
 
-    adapter = ai.openai.Adapter(
-        auth_key=os.getenv("OPENAI_API_KEY"),
-        model="gpt-4o-mini"
-    )
-
-    res = await ctx.step.ai.infer(
-        "llm-answer",
-        adapter=adapter,
-        body={
-            "max_tokens": 1024,
-            "temperature": 0.2,
-            "messages": [
-                {"role": "system", "content": "You answer questions using only the provided context."},
-                {"role": "user", "content": user_content}
-            ]
+   response = groq_client.chat.completions.create(
+    model="llama-3.3-70b-versatile",
+    messages=[
+        {
+            "role": "system",
+            "content": "You answer questions using only the provided context."
+        },
+        {
+            "role": "user",
+            "content": user_content
         }
-    )
+    ],
+    temperature=0.2,
+)
 
-    answer = res["choices"][0]["message"]["content"].strip()
+answer = response.choices[0].message.content.strip()
     return {"answer": answer, "sources": found.sources, "num_contexts": len(found.contexts)}
 
 app = FastAPI()
